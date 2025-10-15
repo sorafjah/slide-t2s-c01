@@ -115,8 +115,9 @@
                   <button data-cpl="16" class="px-3 py-1 text-sm border rounded">特大</button>
                 </div>
                 <div class="flex items-center gap-3">
-                  <input id="viewer-cpl-range" type="range" min="15" max="40" step="1" value="25" class="w-full">
-                  <span class="text-sm text-gray-600">基準<span id="viewer-cpl-label">25</span>文字/行</span>
+                  <!-- スライダーを短く & ラベルをnowrap -->
+                  <input id="viewer-cpl-range" type="range" min="15" max="35" step="1" value="25" class="w-48 sm:w-56">
+                  <span class="text-sm text-gray-600 whitespace-nowrap">基準<span id="viewer-cpl-label">25</span>文字/行</span>
                 </div>
                 <p class="text-xs text-gray-500 mt-2">※ “基準文字数/行（CPL）” を下げるほど文字が大きく表示されます。</p>
               </div>
@@ -155,16 +156,16 @@
                   <input type="text" id="image-url-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="空欄でもOKです">
                 </div>
 
-                <!-- このスライドだけ：文字サイズ -->
+                <!-- このスライドだけ：文字サイズ（▲▼の順 & ▲=大きく / ▼=小さく） -->
                 <div class="pt-2">
                   <label class="block text-sm font-semibold text-gray-700 mb-1">このスライドだけの文字サイズ（閲覧モード）</label>
                   <div class="flex items-center gap-2">
-                    <button id="slide-cpl-down" class="px-2 py-1 text-xs border rounded">▼</button>
                     <button id="slide-cpl-up" class="px-2 py-1 text-xs border rounded">▲</button>
+                    <button id="slide-cpl-down" class="px-2 py-1 text-xs border rounded">▼</button>
                     <button id="slide-cpl-reset" class="px-2 py-1 text-xs border rounded text-indigo-700">リセット</button>
                     <span class="text-xs text-gray-600">現在：<span id="slide-cpl-display">—</span> 文字/行（デッキ基準 <span id="deck-cpl-inline">25</span>）</span>
                   </div>
-                  <p class="text-[11px] text-gray-500 mt-1">※ ▲で文字を小さく（CPL増）、▼で大きく（CPL減）。範囲 15〜40。</p>
+                  <p class="text-[11px] text-gray-500 mt-1">※ **▲で文字を大きく（CPLを小さく）**、**▼で文字を小さく（CPLを大きく）**。範囲 15〜35。</p>
                 </div>
 
                 <!-- 並べ替え -->
@@ -220,7 +221,7 @@
 
     let app, db, auth;
     let SLIDES_COLLECTION_PATH;
-    const CPL_MIN = 15, CPL_MAX = 40;
+    const CPL_MIN = 15, CPL_MAX = 35;
 
     const state = {
       mode:'editor',
@@ -272,8 +273,8 @@
       viewerCplPresets: document.getElementById('viewer-cpl-presets'),
 
       // Per-slide CPL controls
-      slideCplDown: document.getElementById('slide-cpl-down'),
-      slideCplUp: document.getElementById('slide-cpl-up'),
+      slideCplUp: document.getElementById('slide-cpl-up'),     // ▲（大きく）
+      slideCplDown: document.getElementById('slide-cpl-down'), // ▼（小さく）
       slideCplReset: document.getElementById('slide-cpl-reset'),
       slideCplDisplay: document.getElementById('slide-cpl-display'),
       deckCplInline: document.getElementById('deck-cpl-inline'),
@@ -388,7 +389,7 @@
         if(hasImage){
           return `
             <div class="w-full h-full flex flex-col justify-between bg-gray-50 rounded-lg overflow-hidden">
-              <div class="w-full flex-grow flex items-center justify-center overflow-hidden p-2">
+              <div class="w-full flex-grow flex items-center justify中心 overflow-hidden p-2">
                 <img src="${slide.image_url}" class="max-w-full max-h-full object-contain"
                      onerror="this.outerHTML = '<div class=\\'text-red-500\\'>画像表示エラー</div>';">
               </div>
@@ -428,8 +429,8 @@
         document.getElementById('slide-edit-form').classList.remove('hidden');
         dom.textContentInput.value=slide.text_content||'';
         dom.imageUrlInput.value=slide.image_url||'';
-        // per-slide CPL 表示更新
-        const disp = (typeof slide.cpl==='number') ? `${slide.cpl}（上書き）` : `${getEffectiveCpl(slide)}（有効）`;
+        // 表示：上書きの表記は削除（要望対応）
+        const disp = (typeof slide.cpl==='number') ? `${slide.cpl}` : `${getEffectiveCpl(slide)}（有効）`;
         dom.slideCplDisplay.textContent = disp;
       }
       dom.deleteSlideContainer.classList.toggle('hidden',!loadedDocId);
@@ -565,7 +566,7 @@
         state.editor.slides=slidesData.map(s=>{
           const text=s.text_content||s.text||s.content||s.文章||s.テキスト||"";
           const image=s.image_url||s.imageUrl||s.image||s.画像URL||s.画像||"";
-          const cpl = (typeof s.cpl==='number') ? s.cpl : undefined; // 既存JSONに含まれていれば引き継ぎ
+          const cpl = (typeof s.cpl==='number') ? s.cpl : undefined;
           return {text_content:String(text),image_url:String(image), ...(typeof cpl==='number'?{cpl}:{} )};
         });
         state.editor.currentSlideIndex=state.editor.slides.length>0?0:-1;
@@ -760,16 +761,18 @@
 
     // ---------- Per-slide CPL UI ----------
     function setupPerSlideSizeControls(){
+      // ▲ = 大きく（CPL-1）
       dom.slideCplUp.addEventListener('click',()=>{
         const i = state.editor.currentSlideIndex; if(i<0) return;
         const s = state.editor.slides[i]; const base = getEffectiveCpl(s);
-        s.cpl = clamp((typeof s.cpl==='number'? s.cpl : base) + 1, CPL_MIN, CPL_MAX);
+        s.cpl = clamp((typeof s.cpl==='number'? s.cpl : base) - 1, CPL_MIN, CPL_MAX);
         renderEditor();
       });
+      // ▼ = 小さく（CPL+1）
       dom.slideCplDown.addEventListener('click',()=>{
         const i = state.editor.currentSlideIndex; if(i<0) return;
         const s = state.editor.slides[i]; const base = getEffectiveCpl(s);
-        s.cpl = clamp((typeof s.cpl==='number'? s.cpl : base) - 1, CPL_MIN, CPL_MAX);
+        s.cpl = clamp((typeof s.cpl==='number'? s.cpl : base) + 1, CPL_MIN, CPL_MAX);
         renderEditor();
       });
       dom.slideCplReset.addEventListener('click',()=>{
